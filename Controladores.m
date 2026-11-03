@@ -1,28 +1,39 @@
 %% IE-0431 Sistemas de Control - Proyecto final II-2026
 % Equipo 2-10 | Planta: control de temperatura (TMP36 + TIP31C)
 % Punto de operacion asignado: 79-27-60
-%
-% Este script hace lo que pide el AVANCE y la sesion de laboratorio:
+
+% Puntos que se toman en esta código:
+
 %   1) Carga y normaliza los datos experimentales (0-100 %)
+
 %   2) Identifica 4 modelos: 3 continuos + 1 discreto (minimos cuadrados)
-%        M1: System Identification Toolbox (procest, process model P1D)
+%        M1: System Identification Toolbox (P1D)
 %        M2: Metodo de Alfaro 123c (POMTM)
 %        M3: Metodo de Smith (dos puntos, POMTM)
 %        M4: Minimos cuadrados, ARX discreto de orden 3
+
 %   3) Compara los modelos (IAE, ISE y % de ajuste tipo toolbox)
+
 %   4) Sintoniza 4 controladores PI (3 continuos + 1 discreto):
-%        C1: PID Tuner de MATLAB (pidtune)  -> obligatorio segun enunciado
-%        C2: SIMC de Skogestad (2003)        -> literatura
-%        C3: AMIGO de Astrom y Hagglund      -> literatura
+%        C1: PID Tuner de MATLAB (pidtune)
+%        C2: SIMC de Skogestad (2003)
+%        C3: AMIGO de Astrom y Hagglund
 %        C4: PI discreto en sisotool con el modelo de minimos cuadrados
+
 %   5) Simula servocontrol y regulatorio y mide Mp, ta2%, ep, IAE, TVu, Ms
-%
-% Se puede abrir como Live Script: en MATLAB, clic derecho sobre el archivo
-% -> "Open as Live Script". Cada seccion %% queda como una celda.
+
 clear; close all; clc;
 
-%% 0. Configuracion (lo unico que hay que revisar)
-ARCHIVO_CSV = 'tclab_ident_data_Q1_v_79-27-60.txt';  % datos del equipo 2-10
+
+
+
+
+% ---------------------------------------------
+%% Configuración
+% ---------------------------------------------
+
+
+ARCHIVO_CSV = 'tclab_ident_data_Q1_v_79-27-60.txt' ;
 
 % Archivo TCLab: 1 = tiempo [s], 2 = Heater 1 [%], 3 = Heater 2 [%],
 %                4 = Temperature 1 [C], 5 = Temperature 2 [C]
@@ -48,7 +59,15 @@ ESP.ta2_max = 500;   % tiempo de asentamiento al 2 % [s] (lazo abierto ~ 4*tau +
 ESP.ep_max  = 0;     % error permanente ante escalon [%] (servo y regulador)
 ESP.Ms_max  = 1.8;   % robustez: sensibilidad maxima (1.2 - 2.0 es el rango usual)
 
-%% 1. Carga de datos
+
+
+
+
+%% ---------------------------------------------
+% 1. Carga de datos
+% ---------------------------------------------
+
+
 % Busca el csv en la carpeta de este script. Si el nombre de ARCHIVO_CSV no
 % existe y en la carpeta hay un solo .csv, usa ese automaticamente.
 carpeta = fileparts(mfilename('fullpath'));
@@ -67,6 +86,7 @@ if ~isfile(ruta)
                ARCHIVO_CSV, strjoin({lista.name}, ', '));
     end
 end
+
 fprintf('Datos cargados de: %s\n', ruta);
 datos = readmatrix(ruta);
 datos = datos(all(~isnan(datos),2),:);   % quita filas vacias o encabezados
@@ -100,7 +120,15 @@ kult = cambios(end);
 kini = max(1, kult - N_PREVIO);
 t = t(kini:end) - t(kini); u = u(kini:end); y = y(kini:end);
 
+
+
+
+
+% ---------------------------------------------
 %% 2. Punto de operacion y variables de desviacion
+% ---------------------------------------------
+
+
 % Instante del escalon: primera muestra donde u cambia de forma apreciable
 k0 = find(abs(u - u(1)) > 0.5, 1);
 if isempty(k0), error('No se detecto el escalon en la senal de control.'); end
@@ -126,7 +154,15 @@ ylabel('y [%]'); title('Curva de reaccion del proceso (lazo abierto)');
 subplot(2,1,2); stairs(t,u,'LineWidth',1.2); grid on;
 ylabel('u [%]'); xlabel('Tiempo [s]');
 
+
+
+
+
+% ---------------------------------------------
 %% 3. Tiempos caracteristicos de la curva (sobre la salida suavizada)
+% ---------------------------------------------
+
+
 ys = movmean(dy, max(3, round(numel(dy)/200)));   % suaviza ruido de cuantizacion
 yn = ys/Dy;                                        % respuesta normalizada 0 -> 1
 tp = t - t0;                                       % tiempo desde el escalon
@@ -135,7 +171,15 @@ tx = @(p) cruce(tp(k0:end), yn(k0:end), p);        % tiempo al p (fraccion) de D
 t25 = tx(0.25); t75 = tx(0.75);
 t28 = tx(0.283); t63 = tx(0.632);
 
+
+
+
+
+% ---------------------------------------------
 %% 4. Identificacion de modelos
+% ---------------------------------------------
+
+
 s = tf('s');
 
 % --- M1: System Identification Toolbox, process model P1D ---
@@ -192,7 +236,15 @@ figure('Name','compare - continuos'); compare(dat, P1, P2, P3);
 dat_ls = iddata(yk, uk, Tls);
 figure('Name','compare - discreto');  compare(dat_ls, P4);
 
+
+
+
+
+% ---------------------------------------------
 %% 5. Comparacion de modelos
+% ---------------------------------------------
+
+
 ym1 = lsim(P1, du, t);
 ym2 = lsim(P2, du, t);
 ym3 = lsim(P3, du, t);
@@ -222,7 +274,15 @@ Pc = {P1, P2, P3}; P = Pc{ib};
 [Kb, taub, Lb] = pomtm(P);
 fprintf('Mejor modelo continuo (menor IAE): %s\n', nombres{ib});
 
+
+
+
+
+% ---------------------------------------------
 %% 6. Sintonizacion de controladores PI
+% ---------------------------------------------
+
+
 % Accion del controlador: al subir Q1 sube T1 (K > 0), entonces el
 % controlador es de ACCION INVERSA: e = r - y  y  u = C(s)*e.
 % Estructura: PI de un grado de libertad. Se escoge PI porque el proceso es
@@ -285,7 +345,15 @@ disp('C4 - PI discreto (modelo de minimos cuadrados):');
 C4 %#ok<NOPTS>
 C4_tf = tf(C4) %#ok<NOPTS>
 
+
+
+
+
+% ---------------------------------------------
 %% 7. Simulacion: servocontrol y regulatorio en el punto de operacion
+% ---------------------------------------------
+
+
 Tf = 10*(taub + Lb);
 res = zeros(4, 9);
 figure('Name','Servocontrol'); figure('Name','Regulatorio');
@@ -361,7 +429,15 @@ Tesp = array2table(cumple, 'RowNames', cn, 'VariableNames', ...
     {'Mp_ok','ta2_ok','ep_servo_ok','ep_reg_ok','Ms_ok'});
 disp('--- Cumplimiento de especificaciones (1 = cumple) ---'); disp(Tesp);
 
-%% 8. Parametros para llevar al laboratorio
+
+
+
+
+% ---------------------------------------------
+%% 8. Laboratorio
+% ---------------------------------------------
+
+
 % Si el Arduino recibe la temperatura en grados C en lugar de %, la ganancia
 % se escala: Kp[%/C] = Kp[%/%] * 100/(T_MAX - T_MIN). Ti y Td no cambian.
 
@@ -373,7 +449,15 @@ fprintf('(C4 es discreto: periodo de muestreo Ts = %.0f s, integral por Euler ha
 fprintf('Punto de operacion: u0 = %.2f %%,  y0 = %.2f %% (%.2f C)\n', ...
         u0, y0, y0*(T_MAX-T_MIN)/100 + T_MIN);
 
-%% Funciones locales
+
+
+
+
+% ---------------------------------------------
+%% Funciones locales utilizadas
+% ---------------------------------------------
+
+
 function tc = cruce(t, yn, p)
 % Primer instante (interpolado) en que la respuesta normalizada alcanza p
     k = find(yn >= p, 1);
